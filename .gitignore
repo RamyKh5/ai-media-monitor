@@ -1,0 +1,33 @@
+# Ignore environment files
+.env
+
+# Ignore Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environments
+.venv/
+venv/
+env/
+
+# Ignore logs
+*.log
+logs/
+
+# Ignore test coverage and reports
+.coverage
+htmlcov/
+*.cover
+
+# Ignore Jupyter notebooks checkpoints 
+.ipynb_checkpoints/
+
+# Ignore model weights and large data 
+models/
+data/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,26 @@
+# Core Python dependencies
+langgraph==0.0.45        # Workflow orchestration (state machine)
+python-dotenv==1.0.1     # Load environment variables from .env
+loguru==0.7.2            # Advanced logging
+
+# Web scraping / ingestion
+playwright==1.45.0       # Web automation & scraping
+requests==2.32.3         # HTTP requests (API clients)
+
+# OCR / transcription
+pytesseract==0.3.10      # OCR engine wrapper
+Pillow==10.3.0           # Image processing (needed for OCR)
+openai-whisper==20231117 # Whisper for audio-to-text
+ffmpeg-python==0.2.0     # FFmpeg bindings for audio/video
+
+# Machine learning / NLP
+transformers==4.41.2     # Hugging Face models (fine-tuned classifier/synthesizer)
+torch==2.3.1             # PyTorch backend
+scikit-learn==1.5.0      # ML utilities (metrics, preprocessing)
+
+# Database
+psycopg2-binary==2.9.9   # PostgreSQL driver
+sqlalchemy==2.0.30       # ORM for DB connections
+
+# Testing
+pytest==8.2.2            # Unit testing framework
