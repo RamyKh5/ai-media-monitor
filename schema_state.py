@@ -1,4 +1,4 @@
-from typing import TypedDict, Optional, Literal
+from typing import TypedDict, Optional, Literal, List, Dict, Any
 from datetime import datetime
 
 # Structured metadata dictionary
@@ -6,7 +6,15 @@ class Metadata(TypedDict, total=False):
     author: str
     url: str
     language: str
-    extra_info: str  # optional catch-all
+    keywords: List[str]          # Pipeline needs this
+    update_status: str           # Pipeline needs this
+    scrape_success: bool         # Pipeline needs this
+    kw_match: bool               # Pipeline needs this
+    file_path: str               # OCR: PDF file path
+    input_type: str              # "web" or "scanned_journal"
+    total_articles_extracted: int
+    total_matched: int
+    extra_info: str
 
 # Main AgentState schema
 class AgentState(TypedDict):
@@ -18,6 +26,10 @@ class AgentState(TypedDict):
     # Payload
     raw_content: str
     metadata: Optional[Metadata]
+    
+    # --- PIPELINE DATA (This is what you missed) ---
+    scraped_articles: List[Dict[str, Any]]
+    matched_articles: List[Dict[str, Any]]
     
     # Intelligence
     is_harmful: bool

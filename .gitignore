@@ -1,5 +1,6 @@
 # Ignore environment files
 .env
+accounts.db
 
 # Ignore Python cache and compiled files
 __pycache__/
