@@ -1,0 +1,13 @@
+
+
+services:
+  pipeline:
+    build: .                          
+    image: ministere-pipeline:latest
+    container_name: ministere_ai_pipeline
+    restart: "no"
+    env_file:
+      - .env
+    volumes:
+      # Map your host D: drive folder so Whisper downloads model weights once
+      - ./whisper_cache:/app/.cache

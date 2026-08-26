@@ -1,0 +1,23 @@
+# Version control
+.git
+.gitignore
+
+# Python virtual environments & caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Docker build files
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Local logs, databases, and cache folders
+*.log
+.cache/
+data/
+outputs/

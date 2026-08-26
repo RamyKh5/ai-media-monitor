@@ -1,124 +1,134 @@
-import subprocess
+"""
+Audio Capture Module
+- Contains both the core FFmpeg streaming helper and the LangGraph node wrapper.
+- Uses UUID for unique temp file names to prevent concurrent collision.
+"""
+
 import os
+import uuid
 import logging
+import subprocess
+import tempfile
 from typing import Dict, Any, Optional
+from schema_state import AgentState
 
 logger = logging.getLogger(__name__)
 
-def get_audio_stream_url(url: str) -> Optional[str]:
+
+def capture_stream_audio(
+    stream_url: str,
+    output_path: str,
+    duration_seconds: int = 30,
+    is_youtube: bool = False
+) -> bool:
     """
-    Extracts the direct audio stream URL from a YouTube video or live stream.
-    Uses yt-dlp to get the best audio stream link.
-    
-    Works with:
-    - YouTube videos (https://youtube.com/watch?v=...)
-    - YouTube live streams (https://youtube.com/watch?v=...)
-    - YouTube Shorts
+    Core utility: Extracts audio from YouTube or HLS streams using yt-dlp and FFmpeg.
     """
     try:
-        # yt-dlp command to get the direct audio URL only
-        # -g: Get the URL directly (no download)
-        # -f bestaudio: Get the best quality audio stream
-        cmd = ["yt-dlp", "-g", "-f", "bestaudio/best", url]
-        
-        result = subprocess.run(
+        audio_url = stream_url
+
+        if is_youtube:
+            import yt_dlp
+            logger.info(f"Extracting audio stream from YouTube: {stream_url}")
+            ydl_opts = {'format': 'bestaudio/best', 'quiet': True}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(stream_url, download=False)
+                audio_url = info.get('url')
+            logger.info("YouTube audio stream extracted successfully")
+
+        # Build FFmpeg command to capture stream chunk
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", audio_url,
+            "-t", str(duration_seconds),
+            "-vn",
+            "-acodec", "libmp3lame",
+            "-ab", "128k",
+            output_path
+        ]
+
+        logger.info(f"Starting FFmpeg capture for {duration_seconds}s...")
+        process = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=30
-        )
-        
-        if result.returncode != 0:
-            logger.error(f"yt-dlp failed: {result.stderr}")
-            return None
-        
-        audio_url = result.stdout.strip().split('\n')[0]
-        return audio_url if audio_url else None
-            
-    except subprocess.TimeoutExpired:
-        logger.error("yt-dlp timed out")
-        return None
-    except Exception as e:
-        logger.error(f"Error extracting audio URL: {e}")
-        return None
-
-
-def capture_stream_audio(
-    stream_url: str, 
-    output_path: str = "temp_audio.mp3", 
-    duration_seconds: int = 180,
-    is_youtube: bool = False
-) -> bool:
-    """
-    Captures a fixed duration of audio from a stream URL using FFmpeg.
-    
-    Supports:
-    - Direct stream URLs (HLS, RTSP, etc.)
-    - YouTube videos and live streams (when is_youtube=True)
-    
-    Parameters:
-        stream_url: The URL of the stream or YouTube video
-        output_path: Where to save the audio file
-        duration_seconds: How many seconds to record (default 180 = 3 minutes)
-        is_youtube: Set to True if the URL is a YouTube link
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    # If it's a YouTube URL, extract the actual audio stream URL first
-    actual_stream_url = stream_url
-    
-    if is_youtube or "youtube.com" in stream_url or "youtu.be" in stream_url:
-        logger.info(f"Extracting audio stream from YouTube: {stream_url}")
-        actual_stream_url = get_audio_stream_url(stream_url)
-        
-        if not actual_stream_url:
-            logger.error("Failed to extract audio stream from YouTube")
-            return False
-        
-        logger.info(f"YouTube audio stream extracted successfully")
-    
-    # Remove existing file to avoid conflicts
-    if os.path.exists(output_path):
-        os.remove(output_path)
-
-    # FFmpeg command to capture audio
-    cmd = [
-        "ffmpeg",
-        "-y",                           # Overwrite output
-        "-i", actual_stream_url,        # Input stream
-        "-t", str(duration_seconds),    # Duration to record
-        "-vn",                          # Video OFF (audio only)
-        "-acodec", "libmp3lame",        # Encode to MP3
-        output_path
-    ]
-
-    try:
-        logger.info(f"Starting FFmpeg capture for {duration_seconds}s...")
-        
-        result = subprocess.run(
-            cmd, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE, 
-            text=True, 
-            timeout=duration_seconds + 30
+            timeout=duration_seconds + 15
         )
 
-        if result.returncode != 0:
-            logger.error(f"FFmpeg failed: {result.stderr}")
+        if process.returncode != 0:
+            logger.error(f"FFmpeg failed:\n{process.stderr}")
             return False
 
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            logger.info(f"Successfully captured audio to {output_path}")
-            return True
-        else:
-            logger.error("FFmpeg exited, but output file is missing or empty.")
-            return False
+        return os.path.exists(output_path) and os.path.getsize(output_path) > 0
 
-    except subprocess.TimeoutExpired:
-        logger.error("FFmpeg process timed out.")
-        return False
     except Exception as e:
-        logger.error(f"Unexpected error running FFmpeg: {e}")
+        logger.error(f"Error during audio capture: {e}", exc_info=True)
         return False
+
+
+async def capture_audio_node(state: AgentState) -> dict:
+    """
+    LangGraph Node: Orchestrates audio capture and stores the path in state metadata.
+    """
+    metadata = state.get("metadata") or {}
+    
+    stream_url = metadata.get("stream_url")
+    is_youtube = metadata.get("is_youtube", False)
+    duration_seconds = metadata.get("duration_seconds", 30)
+    channel_name = metadata.get("channel_name", "Unknown TV")
+
+    if not stream_url:
+        logger.error("No stream_url provided in metadata")
+        return {
+            "metadata": {
+                **metadata,
+                "audio_capture_status": "error",
+                "audio_error": "Missing stream_url"
+            },
+            "reasoning": "Audio capture failed: no stream URL"
+        }
+
+    # Generate a unique temporary file path using UUID to prevent concurrency collisions
+    unique_id = uuid.uuid4().hex[:8]
+    safe_channel_name = channel_name.replace(' ', '_').replace('/', '_')
+    temp_file = os.path.join(
+        tempfile.gettempdir(),
+        f"audio_{safe_channel_name}_{unique_id}.mp3"
+    )
+
+    logger.info(f"Starting audio capture for {channel_name} ({duration_seconds}s)")
+
+    success = capture_stream_audio(
+        stream_url=stream_url,
+        output_path=temp_file,
+        duration_seconds=duration_seconds,
+        is_youtube=is_youtube
+    )
+
+    if not success or not os.path.exists(temp_file):
+        logger.error(f"Audio capture failed for {channel_name}")
+        return {
+            "metadata": {
+                **metadata,
+                "audio_capture_status": "error",
+                "audio_error": "Capture failed or file not created"
+            },
+            "reasoning": "Audio capture failed"
+        }
+
+    file_size = os.path.getsize(temp_file)
+    logger.info(f"Audio captured successfully: {temp_file} ({file_size} bytes)")
+
+    return {
+        "metadata": {
+            **metadata,
+            "audio_capture_status": "success",
+            "audio_file_path": temp_file,
+            "audio_file_size": file_size,
+            "audio_duration": duration_seconds,
+            "channel_name": channel_name
+        },
+        "reasoning": f"Captured {duration_seconds}s audio from {channel_name}"
+    }

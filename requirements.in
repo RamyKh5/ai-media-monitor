@@ -1,0 +1,29 @@
+# PyTorch CPU Index (Prevents 4GB CUDA download)
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Critical version constraints
+#packaging>=24.0
+
+# Web framework & core
+python-dotenv
+loguru
+aiohttp
+
+# Orchestration & ML
+langgraph
+transformers
+torch
+scikit-learn
+
+# Web scraping & OCR
+playwright
+pytesseract
+Pillow
+
+# Audio
+openai-whisper
+ffmpeg-python
+
+# Database
+psycopg2-binary
+sqlalchemy

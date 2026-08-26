@@ -1,0 +1,41 @@
+﻿id,source,source_type,language,title,text,gold_label,subtype
+001,Synthetic,synthetic,ar,تهديد مباشر ضد مسؤول محلي,تداولت مجموعة مجهولة بياناً يهدد أحد المسؤولين المحليين بإيذائه جسدياً إذا واصل تنفيذ القرار الجديد.,THREAT_OR_INCITEMENT,direct_threat
+002,Synthetic,synthetic,ar,دعوة علنية إلى الاعتداء,نشر ناشط مجهول رسالة تدعو أنصاره إلى الاعتداء على أعضاء مجلس المدينة خلال الاجتماع المقبل.,THREAT_OR_INCITEMENT,explicit_incitement
+003,Synthetic,synthetic,ar,تحريض غير مباشر على العنف,قالت صفحة متطرفة إن الوقت حان لجعل خصومها يدفعون الثمن جسدياً، في إشارة إلى أعضاء مجموعة منافسة.,THREAT_OR_INCITEMENT,implicit_incitement
+004,Synthetic,synthetic,ar,تنسيق لهجوم على منشأة,أظهرت رسائل منشورة على الإنترنت محاولة لتنسيق تجمع بهدف مهاجمة حراس منشأة عامة وإلحاق الأذى بهم.,THREAT_OR_INCITEMENT,coordination
+005,Synthetic,synthetic,ar,تبرير الاعتداء,زعم كاتب في منشور متطرف أن الاعتداء الجسدي على أفراد من جماعة أخرى أصبح واجباً للرد على خلاف سياسي.,THREAT_OR_INCITEMENT,justification
+006,Synthetic,synthetic,ar,استهداف مجموعة مدنية,دعت رسالة مجهولة إلى ضرب أفراد من جالية محلية كلما ظهروا في حي معين.,THREAT_OR_INCITEMENT,group_targeting
+007,Synthetic,synthetic,ar,تهديد مؤسسة تعليمية,تضمن منشور تهديداً بإيذاء العاملين في مدرسة إذا استمرت الإدارة في تطبيق نظامها الجديد.,THREAT_OR_INCITEMENT,institution_targeting
+008,Synthetic,synthetic,ar,تحريض ضد الجمهور,نشرت مجموعة دعوة إلى استخدام العنف ضد أي شخص يحضر فعالية عامة دعماً لخصومها.,THREAT_OR_INCITEMENT,public_targeting
+009,Synthetic,synthetic,ar,دعوة إلى الانتقام الجسدي,حثت صفحة على الانتقام بالاعتداء الجسدي على أشخاص اتهمتهم بالتسبب في خسائر مالية.,THREAT_OR_INCITEMENT,explicit_incitement
+010,Synthetic,synthetic,ar,تهديد متكرر,تلقى صحفي عدة رسائل عامة تتوعده بالأذى الجسدي إذا نشر تحقيقه الأخير.,THREAT_OR_INCITEMENT,direct_threat
+011,Synthetic,synthetic,ar,دعوة ضمنية ضد متظاهرين,قال بيان إن المتظاهرين يستحقون أن يُجبروا بالقوة على الصمت، من دون اقتراح وسيلة سلمية.,THREAT_OR_INCITEMENT,implicit_incitement
+012,Synthetic,synthetic,ar,تنظيم مجموعة للاعتداء,وصف منشور خطة لجمع أشخاص في مكان محدد بهدف الاعتداء على خصوم سياسيين بعد انتهاء تجمعهم.,THREAT_OR_INCITEMENT,coordination
+013,Synthetic,synthetic,ar,تبرير العنف ضد خصوم,أكد خطاب متداول أن العنف الجسدي ضد المعارضين هو الحل الوحيد لمنعهم من مواصلة نشاطهم.,THREAT_OR_INCITEMENT,justification
+014,Synthetic,synthetic,ar,استهداف موظفين عموميين,هدد منشور بإيذاء موظفين في إدارة محلية بسبب القرارات التي اتخذوها.,THREAT_OR_INCITEMENT,institution_targeting
+015,Synthetic,synthetic,ar,تحريض ضد صحفيين,حثت قناة مجهولة متابعيها على مهاجمة صحفيين اعتبرتهم منحازين.,THREAT_OR_INCITEMENT,group_targeting
+016,Synthetic,synthetic,ar,تهديد خلال فعالية,أعلنت مجموعة أنها ستستخدم العنف ضد المشاركين في فعالية عامة إذا لم تُلغَ في موعدها.,THREAT_OR_INCITEMENT,public_targeting
+017,Synthetic,synthetic,fr,Menace directe contre un élu local,Un message publié en ligne menace physiquement un élu local s’il continue à soutenir la nouvelle mesure municipale.,THREAT_OR_INCITEMENT,direct_threat
+018,Synthetic,synthetic,fr,Appel explicite à la violence,Une publication appelle les sympathisants à attaquer les membres d’un conseil municipal lors de leur prochaine réunion.,THREAT_OR_INCITEMENT,explicit_incitement
+019,Synthetic,synthetic,fr,Incitation indirecte,Un groupe affirme que ses adversaires doivent désormais payer le prix physiquement de leurs positions politiques.,THREAT_OR_INCITEMENT,implicit_incitement
+020,Synthetic,synthetic,fr,Coordination d'une attaque,Des messages publics décrivent une tentative de coordonner un rassemblement destiné à agresser des agents de sécurité.,THREAT_OR_INCITEMENT,coordination
+021,Synthetic,synthetic,fr,Justification de violences,Un texte présente les agressions physiques contre un groupe rival comme une réponse nécessaire à un conflit politique.,THREAT_OR_INCITEMENT,justification
+022,Synthetic,synthetic,fr,Ciblage d'une communauté,Une page appelle à frapper les membres d’une communauté locale lorsqu’ils apparaissent dans certains quartiers.,THREAT_OR_INCITEMENT,group_targeting
+023,Synthetic,synthetic,fr,Menace contre une institution,Une publication menace de s’en prendre physiquement au personnel d’un établissement scolaire en raison d’une nouvelle règle.,THREAT_OR_INCITEMENT,institution_targeting
+024,Synthetic,synthetic,fr,Menace visant le public,Un communiqué appelle à utiliser la violence contre les personnes participant à une manifestation en faveur du camp adverse.,THREAT_OR_INCITEMENT,public_targeting
+025,Synthetic,synthetic,fr,Appel à la vengeance physique,Un message encourage des partisans à se venger physiquement de personnes accusées d’avoir causé des pertes économiques.,THREAT_OR_INCITEMENT,explicit_incitement
+026,Synthetic,synthetic,fr,Menaces envers un journaliste,Un journaliste reçoit plusieurs messages publics le menaçant de violences physiques s’il poursuit son enquête.,THREAT_OR_INCITEMENT,direct_threat
+027,Synthetic,synthetic,fr,Pression violente contre des manifestants,Un communiqué affirme que les manifestants doivent être réduits au silence par la force plutôt que par des moyens pacifiques.,THREAT_OR_INCITEMENT,implicit_incitement
+028,Synthetic,synthetic,fr,Organisation d'une agression,Une publication décrit l’organisation d’un groupe chargé d’agresser des opposants à la sortie d’un rassemblement.,THREAT_OR_INCITEMENT,coordination
+029,Synthetic,synthetic,en,Direct threat against a public official,An anonymous statement threatens a local official with physical harm if the official continues implementing the disputed policy.,THREAT_OR_INCITEMENT,direct_threat
+030,Synthetic,synthetic,en,Explicit call for violence,A public post urges supporters to physically attack members of a political council during its next meeting.,THREAT_OR_INCITEMENT,explicit_incitement
+031,Synthetic,synthetic,en,Implicit incitement,A radical group says its opponents now deserve to pay the price physically for their public positions.,THREAT_OR_INCITEMENT,implicit_incitement
+032,Synthetic,synthetic,en,Coordination of an attack,Public messages describe an attempt to organize a group to assault security personnel during an upcoming gathering.,THREAT_OR_INCITEMENT,coordination
+033,Synthetic,synthetic,en,Justification of violence,A statement argues that physically attacking a rival group is necessary to force it to stop its activities.,THREAT_OR_INCITEMENT,justification
+034,Synthetic,synthetic,en,Targeting a community,A post calls on followers to assault members of a local community whenever they are seen in a particular area.,THREAT_OR_INCITEMENT,group_targeting
+035,Synthetic,synthetic,en,Threat against a school,A message threatens physical harm against school employees if the institution keeps its new policy.,THREAT_OR_INCITEMENT,institution_targeting
+036,Synthetic,synthetic,en,Threat against the public,A group threatens to use violence against people attending an event organized by its political opponents.,THREAT_OR_INCITEMENT,public_targeting
+037,Synthetic,synthetic,en,Call for physical revenge,A post urges followers to physically retaliate against people blamed for financial losses.,THREAT_OR_INCITEMENT,explicit_incitement
+038,Synthetic,synthetic,en,Threats toward journalists,Several public messages threaten journalists with physical harm if they continue publishing an investigation.,THREAT_OR_INCITEMENT,direct_threat
+039,Synthetic,synthetic,en,Violent suppression of protesters,A statement says protesters should be silenced through physical force rather than peaceful means.,THREAT_OR_INCITEMENT,implicit_incitement
+040,Synthetic,synthetic,en,Planning an assault,A public message describes an attempt to gather supporters to assault opponents after a political rally.,THREAT_OR_INCITEMENT,coordination
