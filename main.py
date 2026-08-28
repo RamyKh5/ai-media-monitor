@@ -1,7 +1,6 @@
 """
 Main Pipeline - LangGraph Orchestration
 Supports: Web Scraping, OCR (scanned journals), Social Media (Twitter/Facebook), TV Broadcast
-Architecture Fix applied: Flattened the DAG to prevent unsynchronized fan-in collisions.
 """
 
 import asyncio
@@ -32,45 +31,36 @@ from nodes.keyword_filter_node import keyword_filter_node
 from nodes.social_media_node import social_media_node
 from nodes.capture_audio import capture_audio_node
 from nodes.audio_to_txt import transcribe_audio_file
+from nodes.classifier import classifier_node
 
 
 # --- COMPOSITE NODE: TV PIPELINE ---
 async def process_tv_node(state: AgentState) -> dict:
-    """
-    Composite Node: Combines capture and transcription.
-    """
+    """Composite Node: Combines capture and transcription."""
     logger.info("[Composite TV] Phase 1: Capturing Audio...")
     capture_updates = await capture_audio_node(state)
     
-    # Synthesize intermediate state
     intermediate_state = state.copy()
     intermediate_state.update(capture_updates)
     if "metadata" in capture_updates:
         intermediate_state["metadata"] = merge_dicts(state.get("metadata", {}), capture_updates.get("metadata"))
 
-    # Extract file path
     metadata = intermediate_state.get("metadata", {})
     audio_file_path = metadata.get("audio_file_path")
 
     logger.info("[Composite TV] Phase 2: Transcribing Audio...")
-    
-    # Call the sync helper function properly (no 'await' because it's a standard 'def')
     articles_list = transcribe_audio_file(audio_file_path, channel_name=metadata.get("channel_name", "TV"))
-
-    # Extract text from the articles list to update raw_content
     full_text = " ".join([art.get("text", "") for art in articles_list])
 
-    # Package into the exact dictionary format LangGraph expects for State updates
     transcription_updates = {
         "raw_content": full_text,
-        "scraped_articles": articles_list,  # Appends to list via operator.add reducer!
+        "scraped_articles": articles_list,
         "metadata": {
             "transcription_status": "success" if articles_list else "failed",
             "transcription_length": len(full_text)
         }
     }
 
-    # Combine updates from both phases
     final_updates = {**capture_updates, **transcription_updates}
     if "metadata" in capture_updates or "metadata" in transcription_updates:
         meta_left = capture_updates.get("metadata", {})
@@ -80,17 +70,21 @@ async def process_tv_node(state: AgentState) -> dict:
     return final_updates
 
 
-# --- CLASSIFIER STUB NODE ---
-async def classifier_node(state: AgentState) -> dict:
-    """Stub for downstream ML Classifier."""
+# --- SYNTHESIZER STUB NODE ---
+async def synthesizer_node(state: AgentState) -> dict:
+    """
+    Final Node for SAFE articles: Generates a daily brief.
+    Currently a stub. To be implemented next.
+    """
+    logger.info("Executing Synthesizer stub node on SAFE articles...")
     metadata = state.get("metadata") or {}
-    logger.info("Executing Classifier stub node...")
+    matched_articles = state.get("matched_articles", [])
+    
+    synthesis_text = f"Synthesized report for {len(matched_articles)} safe articles."
+    
     return {
-        "metadata": {**metadata, "classifier_status": "stub_executed"},
-        "is_harmful": False,
-        "risk_score": 0.0,
-        "human_review_status": "approved",
-        "reasoning": "Mock classification passed."
+        "metadata": {**metadata, "synthesizer_status": "success"},
+        "reasoning": synthesis_text
     }
 
 
@@ -109,7 +103,6 @@ def route_from_update(state: AgentState) -> list[str]:
         
     routes = []
     
-    # Route to our composite node instead of just capture
     if "tv_broadcast" in input_types:
         routes.append("process_tv")
     if "scanned_journal" in input_types:
@@ -138,21 +131,34 @@ def route_after_filter(state: AgentState) -> str:
     return "classifier"
 
 
+def route_after_classifier(state: AgentState) -> str:
+    """
+    Routes based on the Human Review Status output by the Classifier.
+    """
+    status = state.get("human_review_status")
+    if status == "pending":
+        logger.warning("Routing: Threats/Misinfo found. Sending to Human Review Queue (END).")
+        return "end"
+    
+    logger.info("Routing: Batch approved as SAFE. Directing to Synthesizer.")
+    return "synthesizer"
+
+
 # --- GRAPH CONSTRUCTION ---
 graph = StateGraph(AgentState)
 
-# Register ALL nodes
 graph.add_node("update_check", update_check_node)
-graph.add_node("process_tv", process_tv_node)  # Using the new composite node
+graph.add_node("process_tv", process_tv_node) 
 graph.add_node("scraper", scraper_node)
 graph.add_node("ocr", ocr_node)
 graph.add_node("social_media", social_media_node)
 graph.add_node("keyword_filter", keyword_filter_node)
-graph.add_node("classifier", classifier_node)
+graph.add_node("classifier", classifier_node) 
+graph.add_node("synthesizer", synthesizer_node)
 
 graph.set_entry_point("update_check")
 
-# --- CONDITIONAL ROUTING FROM UPDATE_CHECK ---
+# --- ROUTING EDGES ---
 graph.add_conditional_edges(
     "update_check",
     route_from_update,
@@ -165,15 +171,12 @@ graph.add_conditional_edges(
     }
 )
 
-# --- PERFECTLY SYNCHRONIZED FAN-IN ---
-# Because every branch is exactly ONE node deep, they all finish together 
-# and transition to keyword_filter exactly once.
+# Perfectly synchronized fan-in
 graph.add_edge("process_tv", "keyword_filter")
 graph.add_edge("scraper", "keyword_filter")
 graph.add_edge("ocr", "keyword_filter")
 graph.add_edge("social_media", "keyword_filter")
 
-# --- FINAL CONDITIONAL ROUTING ---
 graph.add_conditional_edges(
     "keyword_filter",
     route_after_filter,
@@ -183,33 +186,40 @@ graph.add_conditional_edges(
     }
 )
 
-graph.add_edge("classifier", END)
+graph.add_conditional_edges(
+    "classifier",
+    route_after_classifier,
+    {
+        "synthesizer": "synthesizer",
+        "end": END
+    }
+)
 
-# Compile Application
+graph.add_edge("synthesizer", END)
+
 workflow = graph.compile()
 
 
 # --- EXECUTION TEST HARNESS ---
 if __name__ == "__main__":
     async def run_pipeline():
-        logger.info("Starting pipeline test run...")
+        logger.info("Starting pipeline test run for OCR...")
         
         initial_state = {
-            "source_name": "Multi-Source Feed",
-            "source_type": "multi",
+            "source_name": "Scanned Newspaper Tests",
+            "source_type": "journal",
             "timestamp": datetime.now(),
             "raw_content": "",
             "metadata": {
-                "input_types": ["tv_broadcast"], # add "social" or "scanned_journal" or "web" to test other branches but social is broken for now 
-                "stream_url": "https://youtu.be/VGG2r3v6j_A?si=mWiqsDY9FKEB2lsM",
-                "is_youtube": True,
-                "duration_seconds": 15,
-                "channel_name": "Al Jazeera Test",
-                "social_platform": "twitter",
-                "scrape_mode": "profiles",
-                "target_profiles": ["ennaharonline"],
-                "keywords": ["الجزائر", "وزير", "المحروقات"],
-                "social_post_limit": 10
+                # 1. SET THIS TO TRIGGER THE OCR ROUTE
+                "input_types": ["scanned_journal"], 
+                
+                # 2. POINT THIS TO YOUR TEST IMAGE
+                # Change this path to point to the specific SAFE or THREAT image you want to test
+                "file_path": "./tests/03_threat_incitement.pdf", 
+                
+                # Keywords to trigger the filter node (ensure these exist in your test image!)
+                "keywords": ["supporters", "messages", "violence"], 
             },
             "scraped_articles": [],
             "matched_articles": [],
@@ -226,6 +236,13 @@ if __name__ == "__main__":
         logger.info(f"Review Status: {result.get('human_review_status')}")
         
         metadata = result.get("metadata", {})
-        logger.info(f"Metadata Keys: {list(metadata.keys())}")
+        logger.info(f"Final Metadata: {metadata}")
+        
+        # Print the final classifications if any articles made it through
+        if result.get("matched_articles"):
+            logger.info("--- Classification Results ---")
+            for art in result.get("matched_articles"):
+                logger.info(f"Classification: {art.get('classification')} | Confidence: {art.get('confidence_score')}")
+                logger.info(f"Reasoning: {art.get('classifier_reasoning')}")
         
     asyncio.run(run_pipeline())
