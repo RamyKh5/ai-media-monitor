@@ -33,6 +33,9 @@ from nodes.capture_audio import capture_audio_node
 from nodes.audio_to_txt import transcribe_audio_file
 from nodes.classifier import classifier_node
 
+# IMPORT THE NEW SYNTHESIZER
+from nodes.synthesizer import consume_and_process, PipelineConfig, ArticleInput
+
 
 # --- COMPOSITE NODE: TV PIPELINE ---
 async def process_tv_node(state: AgentState) -> dict:
@@ -70,27 +73,53 @@ async def process_tv_node(state: AgentState) -> dict:
     return final_updates
 
 
-# --- SYNTHESIZER STUB NODE ---
+# --- SYNTHESIZER NODE (INTEGRATED) ---
 async def synthesizer_node(state: AgentState) -> dict:
     """
     Final Node for SAFE articles: Generates a daily brief.
-    Currently a stub. To be implemented next.
+    Acts as an adapter between the Graph State dicts and the Synthesizer Pydantic models.
     """
-    logger.info("Executing Synthesizer stub node on SAFE articles...")
-    metadata = state.get("metadata") or {}
+    logger.info("Executing Synthesizer node on SAFE articles...")
+    metadata = state.get("metadata", {})
     matched_articles = state.get("matched_articles", [])
     
-    synthesis_text = f"Synthesized report for {len(matched_articles)} safe articles."
+    if not matched_articles:
+        logger.warning("Synthesizer reached, but no matched articles found to summarize.")
+        return {"metadata": {**metadata, "synthesizer_status": "skipped"}}
+
+    # ADAPTER LOGIC: Map state dictionaries to ArticleInput models
+    article_inputs = []
+    for i, art in enumerate(matched_articles):
+        article_inputs.append(
+            ArticleInput(
+                article_id=art.get("id", f"ocr_art_{i}"),
+                text=art.get("text", ""), 
+                source=metadata.get("source_name", "Scanned Journal"),
+                language="ar" # Enforce Arabic synthesis
+            )
+        )
     
+    # Configure specifically for your CPU hardware constraints
+    config = PipelineConfig(
+        model_name="qwen2.5:3b-instruct", 
+        max_concurrent_batches=1,
+        max_articles_per_batch=5
+    )
+    
+    # Execute the async pipeline
+    logger.info(f"Passing {len(article_inputs)} verified articles to Synthesis Engine...")
+    await consume_and_process(article_inputs, config)
+    #Construct the path where the synthesizer saved the markdown file
+    today_str = datetime.now().strftime("%Y_%m_%d")
+    report_path = f"data/syntheses/daily_synthesis_{today_str}.md"
     return {
-        "metadata": {**metadata, "synthesizer_status": "success"},
-        "reasoning": synthesis_text
+        "metadata": {**metadata, "synthesizer_status": "success", "synthesizer_file_path": report_path},
+        "reasoning": f"Successfully synthesized {len(article_inputs)} articles into daily brief."
     }
 
 
 # --- ROUTING FUNCTIONS ---
 def route_from_update(state: AgentState) -> list[str]:
-    """Routes to appropriate source nodes based on input_types."""
     metadata = state.get("metadata") or {}
     
     input_types = metadata.get("input_types", [])
@@ -121,7 +150,6 @@ def route_from_update(state: AgentState) -> list[str]:
 
 
 def route_after_filter(state: AgentState) -> str:
-    """Routes to classifier if keyword matches exist, else terminates."""
     metadata = state.get("metadata") or {}
     if not metadata.get("kw_match"):
         logger.info("Routing: No keyword matches found. Terminating graph.")
@@ -132,9 +160,6 @@ def route_after_filter(state: AgentState) -> str:
 
 
 def route_after_classifier(state: AgentState) -> str:
-    """
-    Routes based on the Human Review Status output by the Classifier.
-    """
     status = state.get("human_review_status")
     if status == "pending":
         logger.warning("Routing: Threats/Misinfo found. Sending to Human Review Queue (END).")
@@ -171,7 +196,6 @@ graph.add_conditional_edges(
     }
 )
 
-# Perfectly synchronized fan-in
 graph.add_edge("process_tv", "keyword_filter")
 graph.add_edge("scraper", "keyword_filter")
 graph.add_edge("ocr", "keyword_filter")
@@ -203,7 +227,7 @@ workflow = graph.compile()
 # --- EXECUTION TEST HARNESS ---
 if __name__ == "__main__":
     async def run_pipeline():
-        logger.info("Starting pipeline test run for OCR...")
+        logger.info("Starting pipeline test run for OCR to Synthesizer...")
         
         initial_state = {
             "source_name": "Scanned Newspaper Tests",
@@ -211,15 +235,13 @@ if __name__ == "__main__":
             "timestamp": datetime.now(),
             "raw_content": "",
             "metadata": {
-                # 1. SET THIS TO TRIGGER THE OCR ROUTE
                 "input_types": ["scanned_journal"], 
                 
-                # 2. POINT THIS TO YOUR TEST IMAGE
-                # Change this path to point to the specific SAFE or THREAT image you want to test
-                "file_path": "./tests/03_threat_incitement.pdf", 
+                # IMPORTANT: CHANGE THIS TO A BENIGN/SAFE PDF TO REACH THE SYNTHESIZER
+                "file_path": "./tests/02_mixed_pipeline_test.pdf", 
                 
-                # Keywords to trigger the filter node (ensure these exist in your test image!)
-                "keywords": ["supporters", "messages", "violence"], 
+                # Pick 2-3 words that actually exist in your safe document so it passes the filter
+                "keywords": ["االعتداء", "االستثمار", "انهيار", "الغابات"], 
             },
             "scraped_articles": [],
             "matched_articles": [],
@@ -236,13 +258,6 @@ if __name__ == "__main__":
         logger.info(f"Review Status: {result.get('human_review_status')}")
         
         metadata = result.get("metadata", {})
-        logger.info(f"Final Metadata: {metadata}")
-        
-        # Print the final classifications if any articles made it through
-        if result.get("matched_articles"):
-            logger.info("--- Classification Results ---")
-            for art in result.get("matched_articles"):
-                logger.info(f"Classification: {art.get('classification')} | Confidence: {art.get('confidence_score')}")
-                logger.info(f"Reasoning: {art.get('classifier_reasoning')}")
+        logger.info(f"Synthesizer Status: {metadata.get('synthesizer_status', 'Not reached')}")
         
     asyncio.run(run_pipeline())

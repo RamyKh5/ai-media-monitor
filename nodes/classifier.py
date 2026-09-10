@@ -24,6 +24,9 @@ async_ollama = AsyncClient()
 CLASSIFICATION_PROMPT = """You are a content-risk classifier for Algerian news articles.
 Analyze the article in its original language (Arabic, French, or English) and classify it into exactly ONE category.
 
+CRITICAL INSTRUCTION ON DATA NOISE:
+The text you are analyzing comes from automated pipelines (OCR scanned newspapers, Speech-to-Text TV broadcasts, web scrapers, or social media feeds). It may contain typos, phonetic errors, emojis, HTML artifacts, or broken words. Do not let these artifacts confuse you. Evaluate the overarching **semantic intent** and context of the text, not literal spelling perfection.
+
 CATEGORIES:
 - SAFE: Regular news reporting, political commentary, event coverage.
 - THREAT_OR_INCITEMENT: Calls to violence, targeted harm, mobilization, infrastructure disruption.

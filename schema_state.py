@@ -47,6 +47,10 @@ class Metadata(TypedDict, total=False):
     transcription_status: str
     transcription_length: int
     transcription_error: str
+
+    # Synthesis Output
+    synthesizer_status: str
+    synthesizer_file_path: str
     
     # General
     input_types: List[str]  # Supports parallel routing
