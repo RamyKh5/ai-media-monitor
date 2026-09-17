@@ -150,6 +150,9 @@ async def run_pipeline_task(job_id: str, request: JobCreateRequest):
 
 
 # --- ENDPOINTS ---
+@app.get("/")
+async def root_health_check():
+    return {"status": "online", "system": "Cellule de Veille API"}
 @app.post("/api/jobs", response_model=JobStatusResponse)
 async def create_job(request: JobCreateRequest, background_tasks: BackgroundTasks):
     logger.info(f"Job creation request received with keywords: {request.keywords}")
