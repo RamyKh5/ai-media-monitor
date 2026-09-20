@@ -1,15 +1,17 @@
 import os
+import json
+import shutil
 import uuid
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from fastapi.responses import FileResponse  # <-- NEW IMPORT
+from fastapi.responses import FileResponse
 
 # Ensure main.py is in the same directory and exports 'workflow'
 from main import workflow
@@ -24,6 +26,10 @@ job_database: Dict[str, Dict[str, Any]] = {}
 job_lock = asyncio.Lock()
 JOB_TTL_SECONDS = 3600
 
+# --- FILE UPLOAD DIRECTORY ---
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 # --- PROGRESS MAPPING ---
 NODE_PROGRESS_MAP = {
     "update_check": 10,
@@ -35,6 +41,21 @@ NODE_PROGRESS_MAP = {
     "classifier": 80,
     "synthesizer": 100
 }
+
+
+# --- INTERNAL REQUEST MODEL ---
+# We build this from FormData inside the endpoint.
+# It's NOT a Pydantic model because it's never parsed from HTTP directly.
+class JobRequest:
+    def __init__(
+        self,
+        input_types: List[str],
+        keywords: List[str],
+        file_path: Optional[str]
+    ):
+        self.input_types = input_types
+        self.keywords = keywords
+        self.file_path = file_path
 
 
 # --- LIFESPAN MANAGER ---
@@ -58,13 +79,7 @@ app.add_middleware(
 )
 
 
-# --- REQUEST & RESPONSE SCHEMAS ---
-class JobCreateRequest(BaseModel):
-    input_types: list[str]
-    keywords: list[str] = []
-    file_path: Optional[str] = None
-
-
+# --- RESPONSE SCHEMA ---
 class JobStatusResponse(BaseModel):
     job_id: str
     status: str
@@ -75,7 +90,7 @@ class JobStatusResponse(BaseModel):
 
 
 # --- BACKGROUND WORKER TASK ---
-async def run_pipeline_task(job_id: str, request: JobCreateRequest):
+async def run_pipeline_task(job_id: str, request: JobRequest):
     """
     Executes the LangGraph pipeline asynchronously in the background.
     Safely captures exceptions to avoid crashing Uvicorn worker threads.
@@ -108,9 +123,10 @@ async def run_pipeline_task(job_id: str, request: JobCreateRequest):
 
         final_state: Dict[str, Any] = {}
 
+        # Stream node updates in real-time
         async for output in workflow.astream(initial_state):
             for node_name, state_update in output.items():
-                
+
                 progress_val = NODE_PROGRESS_MAP.get(
                     node_name,
                     job_database[job_id]["progress"]
@@ -120,6 +136,7 @@ async def run_pipeline_task(job_id: str, request: JobCreateRequest):
                     job_database[job_id]["progress"] = progress_val
                     job_database[job_id]["current_step"] = f"Running {node_name}"
 
+                # Deep merge: preserves nested metadata keys from all nodes
                 if isinstance(state_update, dict):
                     for key, value in state_update.items():
                         if isinstance(value, dict) and isinstance(final_state.get(key), dict):
@@ -153,10 +170,55 @@ async def run_pipeline_task(job_id: str, request: JobCreateRequest):
 @app.get("/")
 async def root_health_check():
     return {"status": "online", "system": "Cellule de Veille API"}
-@app.post("/api/jobs", response_model=JobStatusResponse)
-async def create_job(request: JobCreateRequest, background_tasks: BackgroundTasks):
-    logger.info(f"Job creation request received with keywords: {request.keywords}")
 
+
+@app.post("/api/jobs", response_model=JobStatusResponse)
+async def create_job(
+    background_tasks: BackgroundTasks,
+    input_types: str = Form(...),              # JSON string: '["scanned_journal"]'
+    keywords: str = Form(...),                 # JSON string: '["pénurie","carburant"]'
+    file: Optional[UploadFile] = File(None),   # Binary file upload
+    file_path: Optional[str] = Form(None),     # URL / path for non-file jobs
+):
+    """
+    Accepts multipart/form-data (from the frontend's FormData).
+    Parses JSON strings back into Python lists.
+    Saves uploaded files to disk.
+    """
+    # --- PARSE FORM FIELDS ---
+    try:
+        input_types_list = json.loads(input_types)
+        keywords_list = json.loads(keywords)
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid JSON in form fields: {e}"
+        )
+
+    logger.info(
+        f"Job creation request received. "
+        f"Types: {input_types_list}, Keywords: {keywords_list}"
+    )
+
+    # --- SAVE UPLOADED FILE IF PROVIDED ---
+    saved_path: Optional[str] = None
+
+    if file is not None:
+        # Preserve the original file extension (e.g., .pdf, .png)
+        ext = os.path.splitext(file.filename or "")[1]
+        safe_name = f"{uuid.uuid4().hex}{ext}"
+        saved_path = os.path.join(UPLOAD_DIR, safe_name)
+
+        # Stream file to disk (memory-safe for large uploads)
+        with open(saved_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        logger.info(f"Saved uploaded file to: {saved_path}")
+
+    # Use uploaded file if present; otherwise fall back to file_path (URL)
+    effective_file_path = saved_path or file_path
+
+    # --- CREATE JOB ---
     job_id = str(uuid.uuid4())
 
     async with job_lock:
@@ -169,7 +231,16 @@ async def create_job(request: JobCreateRequest, background_tasks: BackgroundTask
             "error": None
         }
 
-    background_tasks.add_task(run_pipeline_task, job_id, request)
+    # --- BUILD INTERNAL REQUEST ---
+    pipeline_request = JobRequest(
+        input_types=input_types_list,
+        keywords=keywords_list,
+        file_path=effective_file_path
+    )
+
+    # --- RUN IN BACKGROUND ---
+    background_tasks.add_task(run_pipeline_task, job_id, pipeline_request)
+
     return JobStatusResponse(job_id=job_id, status="queued")
 
 
@@ -198,7 +269,7 @@ async def get_job_result(job_id: str):
 
     if job["status"] != "completed":
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Job is '{job['status']}'. You can only fetch results for completed jobs."
         )
 
@@ -208,11 +279,9 @@ async def get_job_result(job_id: str):
         logger.error(f"File missing for job {job_id} at path: {result_path}")
         raise HTTPException(status_code=404, detail="Result file not found on the server.")
 
-    # SENIOR UPGRADE: This streams the file directly to the client.
-    # It automatically handles chunking and sets the correct HTTP headers.
     return FileResponse(
-        path=result_path, 
-        media_type="text/markdown", 
+        path=result_path,
+        media_type="text/markdown",
         filename=f"synthesis_result_{job_id}.md"
     )
 
