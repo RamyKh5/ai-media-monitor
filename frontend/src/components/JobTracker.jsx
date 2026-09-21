@@ -6,12 +6,11 @@
 // - A Set tracks completed/failed jobs (avoids re-polling)
 // - useRef holds the "live" set of active jobs (avoids stale closure)
 // - Markdown results are rendered as formatted documents
-// - Each result can be downloaded as a PDF
+// - Each result can be downloaded as a .md file
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import html2pdf from "html2pdf.js";
 import { getJobStatus, getJobResult } from "../services/api";
 
 // Polling interval (ms). 2s balances responsiveness and server load.
@@ -30,36 +29,41 @@ export default function JobTracker({ jobIds }) {
   const isPollingRef    = useRef(false);      // Guard: only ONE interval ever
 
   // ------------------------------------------------------------
-  // PDF EXPORT HANDLER
+  // MARKDOWN EXPORT HANDLER
   // ------------------------------------------------------------
-  // Converts the rendered Markdown result into a downloadable PDF.
-  // How it works:
-  //   1. Find the specific job's result DOM node (via its id)
-  //   2. Snapshot it with html2canvas (renders HTML → image)
-  //   3. Wrap the image into a jsPDF A4 page and download
+  // Packages the raw Markdown string into a virtual file and triggers
+  // a browser download — no library needed.
   //
-  // Why target by ID?
-  // - Each job has its own result panel, so we need the right one.
-  // - Using `result-content-${jobId}` guarantees unique selection.
-  function handleDownloadPDF(jobId) {
-    // 1. Target the DOM element we want to convert
-    const element = document.getElementById(`result-content-${jobId}`);
-    if (!element) {
-      console.error(`Result element for job ${jobId} not found.`);
-      return;
-    }
+  // How it works:
+  //   1. Wrap the string in a Blob (a virtual file in memory)
+  //   2. Create a temporary object URL pointing to the Blob
+  //   3. Create an invisible <a> tag with `download` attribute
+  //   4. Programmatically click it → browser downloads the file
+  //   5. Clean up: remove the link and revoke the object URL
+  //
+  // Why this approach?
+  // - Native browser API, no extra dependency
+  // - Works with any text content (Markdown, JSON, plain text)
+  // - Doesn't require rendering to PDF or canvas
+  function handleDownloadMarkdown(jobId, content) {
+    // 1. Wrap the string in a Blob (type: text/markdown)
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
 
-    // 2. Configure the PDF settings
-    const opt = {
-      margin:       10,                                     // 10mm margin around content
-      filename:     `veille-synthese-${jobId.slice(0, 8)}.pdf`, // Short filename from job ID
-      image:        { type: "jpeg", quality: 0.98 },        // High-quality JPEG inside PDF
-      html2canvas:  { scale: 2 },                           // 2x resolution for crisp text
-      jsPDF:        { unit: "mm", format: "a4", orientation: "portrait" }
-    };
+    // 2. Create a temporary URL for the Blob
+    const url = URL.createObjectURL(blob);
 
-    // 3. Generate and trigger download
-    html2pdf().set(opt).from(element).save();
+    // 3. Create an invisible anchor element
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `veille-synthese-${jobId.slice(0, 8)}.md`;
+
+    // 4. Trigger the download
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // 5. Free the memory used by the Blob URL
+    URL.revokeObjectURL(url);
   }
 
   // ------------------------------------------------------------
@@ -178,39 +182,24 @@ export default function JobTracker({ jobIds }) {
             {/* ---------- Result Panel ---------- */}
             {result && (
               <div className="mt-3 space-y-2">
-                {/* ---------- Header with Download Button ---------- */}
+                {/* ---------- Header with Markdown Download Button ---------- */}
                 <div className="flex justify-between items-center">
                   <h3 className="text-xs font-bold text-emerald-400">
                     Résultat de l'analyse :
                   </h3>
                   <button
-                    onClick={() => handleDownloadPDF(jobId)}
-                    className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs font-medium rounded transition-colors"
+                    onClick={() => handleDownloadMarkdown(jobId, result)}
+                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded transition-colors"
                   >
-                    Télécharger PDF
+                    Télécharger (.md)
                   </button>
                 </div>
 
                 {/*
-                  Why `id={`result-content-${jobId}`}`?
-                  - html2pdf needs to locate THIS specific job's result.
-                  - Using a unique ID per job ensures we export the right one
-                    when multiple jobs are displayed.
-
-                  Why change to `bg-white text-black`?
-                  - PDF exports look best on white with black text.
-                  - The dark UI is for the screen, but the PDF should look
-                    like a real document.
-
-                  Why keep `prose` but NOT `prose-invert`?
-                  - `prose` styles headings/lists/paragraphs.
-                  - Without `prose-invert`, colors stay dark-on-light,
-                    which is correct for a printed document.
+                  Screen Preview — keeps dark-mode prose formatting.
+                  `prose prose-invert` = beautiful typography on dark bg.
                 */}
-                <div
-                  id={`result-content-${jobId}`}
-                  className="p-8 bg-white text-black rounded prose max-w-none text-sm max-h-96 overflow-y-auto"
-                >
+                <div className="p-4 bg-slate-900 rounded text-slate-300 prose prose-invert max-w-none text-xs max-h-96 overflow-y-auto border border-slate-700">
                   <ReactMarkdown>{result}</ReactMarkdown>
                 </div>
               </div>
