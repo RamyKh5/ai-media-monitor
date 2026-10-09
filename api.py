@@ -4,6 +4,7 @@ import shutil
 import uuid
 import asyncio
 import logging
+import sys
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
@@ -15,7 +16,8 @@ from fastapi.responses import FileResponse
 
 # Ensure main.py is in the same directory and exports 'workflow'
 from main import workflow
-
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 # --- LOGGING SETUP ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api.jobs")
@@ -41,6 +43,11 @@ NODE_PROGRESS_MAP = {
     "classifier": 80,
     "synthesizer": 100
 }
+
+# --- CLASSIFICATIONS THAT TRIGGER AN ALERT ---
+# When the classifier returns one of these, we short-circuit to "alert_triggered"
+# and skip the synthesizer output entirely.
+ALERT_CLASSIFICATIONS = {"THREAT_OR_INCITEMENT", "MISINFORMATION_HAZARD"}
 
 
 # --- INTERNAL REQUEST MODEL ---
@@ -80,6 +87,7 @@ app.add_middleware(
 
 
 # --- RESPONSE SCHEMA ---
+# Added `alert_data` so the frontend can render the red alert card.
 class JobStatusResponse(BaseModel):
     job_id: str
     status: str
@@ -87,6 +95,7 @@ class JobStatusResponse(BaseModel):
     current_step: str = ""
     result_path: Optional[str] = None
     error: Optional[str] = None
+    alert_data: Optional[Dict[str, Any]] = None   # ← NEW
 
 
 # --- BACKGROUND WORKER TASK ---
@@ -103,6 +112,8 @@ async def run_pipeline_task(job_id: str, request: JobRequest):
         job_database[job_id]["current_step"] = "initializing"
 
     try:
+        is_web_job = "web" in request.input_types
+
         initial_state = {
             "source_name": "API Upload",
             "source_type": "multi",
@@ -111,7 +122,8 @@ async def run_pipeline_task(job_id: str, request: JobRequest):
             "metadata": {
                 "input_types": request.input_types,
                 "keywords": request.keywords,
-                "file_path": request.file_path
+                "file_path": request.file_path,      # used by OCR / audio / etc.
+                "url": request.file_path if is_web_job else None,   # ← used by scraper
             },
             "scraped_articles": [],
             "matched_articles": [],
@@ -144,18 +156,66 @@ async def run_pipeline_task(job_id: str, request: JobRequest):
                         else:
                             final_state[key] = value
 
-        saved_file = final_state.get("metadata", {}).get(
-            "synthesizer_file_path",
-            "Path not found"
-        )
+        # ============================================================
+        # THE BRIDGE: Translate LangGraph state → Frontend UI contract
+        # ============================================================
+        # The graph returns domain logic (human_review_status = "pending").
+        # The API layer converts that into a UI-friendly shape:
+        #   - "pending"  →  "alert_triggered"  + alert_data
+        #   - else       →  "completed"        + result_path
+        #
+        # This keeps the graph presentation-agnostic. A future mobile app
+        # would only need to consume the same JSON contract — the LangGraph
+        # logic stays untouched.
 
-        async with job_lock:
-            job_database[job_id]["status"] = "completed"
-            job_database[job_id]["progress"] = 100
-            job_database[job_id]["current_step"] = "done"
-            job_database[job_id]["result_path"] = saved_file
+        if final_state.get("human_review_status") == "pending":
+            # --- FAST PATH: Alert! ---
+            # Filter matched_articles down to only threats/misinfo
+            suspect_articles = [
+                a for a in final_state.get("matched_articles", [])
+                if a.get("classification") in ALERT_CLASSIFICATIONS
+            ]
 
-        logger.info(f"[Job {job_id}] Completed successfully. Output: {saved_file}")
+            logger.warning(
+                f"[Job {job_id}] ALERT TRIGGERED — "
+                f"{len(suspect_articles)} suspect article(s) detected."
+            )
+
+            async with job_lock:
+                job_database[job_id]["status"] = "alert_triggered"
+                job_database[job_id]["progress"] = 100
+                job_database[job_id]["current_step"] = "alert"
+                job_database[job_id]["alert_data"] = {
+                    "count": len(suspect_articles),
+                    "articles": [
+                        {
+                            # Keys MUST match what the React alert card maps over.
+                            # See JobTracker.jsx alert_triggered block.
+                            "source": a.get("selector") or final_state.get("source_name", "Source inconnue"),
+                            "classification": a.get("classification"),
+                            "confidence": a.get("confidence_score", 0.0),
+                            "snippet": (a.get("text") or "")[:300],
+                            "article_id": a.get("article_id"),
+                            "reasoning": a.get("classifier_reasoning", ""),
+                        }
+                        for a in suspect_articles
+                    ]
+                }
+
+        else:
+            # --- SLOW PATH: Safe, synthesis is ready ---
+            saved_file = final_state.get("metadata", {}).get(
+                "synthesizer_file_path",
+                "Path not found"
+            )
+
+            async with job_lock:
+                job_database[job_id]["status"] = "completed"
+                job_database[job_id]["progress"] = 100
+                job_database[job_id]["current_step"] = "done"
+                job_database[job_id]["result_path"] = saved_file
+
+            logger.info(f"[Job {job_id}] Completed successfully. Output: {saved_file}")
 
     except Exception as e:
         logger.error(f"[Job {job_id}] Pipeline execution failed: {e}", exc_info=True)
@@ -228,7 +288,8 @@ async def create_job(
             "current_step": "queued",
             "created_at": datetime.now().isoformat(),
             "result_path": None,
-            "error": None
+            "error": None,
+            "alert_data": None,        # ← NEW: reserve the key
         }
 
     # --- BUILD INTERNAL REQUEST ---
@@ -252,6 +313,8 @@ async def get_job_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
+    # Pass all job fields through the response schema.
+    # `alert_data` will appear only when the job is alert_triggered.
     return JobStatusResponse(job_id=job_id, **job)
 
 

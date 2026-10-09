@@ -106,29 +106,27 @@ export default function JobForm({ onJobCreated }) {
       .filter(Boolean);
 
     // ------------------------------------------------------------
-    // BUILD PAYLOAD
+    // BUILD PAYLOAD — ALWAYS FormData
     // ------------------------------------------------------------
-    // If a file is present (scanned_journal), we use FormData.
-    // Otherwise, we send plain JSON.
-    let payload;
+    // The backend (`api.py`) uses `Form(...)` and `File(...)`, which
+    // means it ONLY accepts multipart/form-data — NOT plain JSON.
+    //
+    // Previous bug: when no file was present (web / social / tv), we
+    // sent plain JSON → backend rejected with "input_types missing".
+    //
+    // Fix: always send FormData. Append the file only when it exists,
+    // and append `file_path` (URL / handle / channel) otherwise.
+    const payload = new FormData();
 
+    // Backend expects JSON array strings for these two fields
+    payload.append("input_types", JSON.stringify([inputType]));
+    payload.append("keywords", JSON.stringify(keywords));
+
+    // Append the file (if any) OR the text target
     if (file) {
-      payload = new FormData();
-
-      // Backend expects JSON array strings for both fields
-      payload.append("input_types", JSON.stringify([inputType]));
-      payload.append("keywords", JSON.stringify(keywords));
-
-      // Actual binary file upload
       payload.append("file", file);
-
-    } else {
-      // JSON mode — backend receives a regular JSON body
-      payload = {
-        input_types: [inputType],
-        keywords: keywords,
-        file_path: filePath.trim() || null,
-      };
+    } else if (filePath.trim()) {
+      payload.append("file_path", filePath.trim());
     }
 
     // --- Call the backend ---
